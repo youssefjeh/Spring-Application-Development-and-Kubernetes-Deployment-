@@ -1,0 +1,40 @@
+image: docker:latest
+services:
+  - docker:dind
+
+stages:
+  - build
+  - publish
+  - deploy
+
+
+
+build-java-project:
+  stage: build
+  image: maven:3.6.3-jdk-13
+  script:
+    mvn package
+
+build-docker-img:
+  stage: publish
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+  script:
+    - docker build -t $UI_IMAGE_NAME .
+  after_script:
+    - docker tag $UI_IMAGE_NAME $CI_REGISTRY_USER/$UI_IMAGE_NAME
+    - docker push $CI_REGISTRY_USER/$UI_IMAGE_NAME
+
+
+deploy-to-gke:
+  stage: deploy
+  image:
+    name: google/cloud-sdk:latest
+  before_script:
+    - echo $SERVICE_ACCOUNT_KEY > /tmp/gcloud-service-key.json
+    - gcloud auth activate-service-account --key-file /tmp/gcloud-service-key.json
+    - gcloud config set project $GCLOUD_PROJECT_NAME
+    - gcloud container clusters get-credentials $GKE_CLUSTER_NAME --zone $GKE_CLUSTER_ZONE --project $GCLOUD_PROJECT_NAME
+  script:
+    - kubectl apply -f deployment.yml
+
